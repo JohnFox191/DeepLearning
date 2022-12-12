@@ -8,7 +8,7 @@ import os
 
 import numpy as np
 import matplotlib.pyplot as plt
-
+import math
 import utils
 
 
@@ -43,18 +43,28 @@ class LinearModel(object):
         y_hat = self.predict(X)
         n_correct = (y == y_hat).sum()
         n_possible = y.shape[0]
+        print("Results:" ,n_correct/n_possible)
         return n_correct / n_possible
 
 
 class Perceptron(LinearModel):
+    
     def update_weight(self, x_i, y_i, **kwargs):
         """
         x_i (n_features): a single training example
         y_i (scalar): the gold label for that example
         other arguments are ignored
         """
-        # Q1.1a
-        raise NotImplementedError
+        # predict value using old weights
+        y_hat = self.predict(x_i)
+        
+        # if prediction is wrong update weights
+        if y_hat != y_i:
+            
+            # increase weights for correct class
+            self.W[y_i] = np.add(self.W[y_i],x_i)
+            # decrease weights for wrong class
+            self.W[y_hat] = np.subtract(self.W[y_hat],x_i)
 
 
 class LogisticRegression(LinearModel):
@@ -97,12 +107,13 @@ class MLP(object):
         raise NotImplementedError
 
 
-def plot(epochs, valid_accs, test_accs):
+def plot(epochs, valid_accs, test_accs,train_accs):
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.xticks(epochs)
     plt.plot(epochs, valid_accs, label='validation')
     plt.plot(epochs, test_accs, label='test')
+    plt.plot(epochs, train_accs, label='train')
     plt.legend()
     plt.show()
 
@@ -145,6 +156,7 @@ def main():
     else:
         model = MLP(n_classes, n_feats, opt.hidden_size, opt.layers)
     epochs = np.arange(1, opt.epochs + 1)
+    train_accs = []
     valid_accs = []
     test_accs = []
     for i in epochs:
@@ -157,11 +169,12 @@ def main():
             train_y,
             learning_rate=opt.learning_rate
         )
+        train_accs.append(model.evaluate(train_X, train_y))
         valid_accs.append(model.evaluate(dev_X, dev_y))
         test_accs.append(model.evaluate(test_X, test_y))
 
     # plot
-    plot(epochs, valid_accs, test_accs)
+    plot(epochs, valid_accs, test_accs,train_accs)
 
 
 if __name__ == '__main__':
