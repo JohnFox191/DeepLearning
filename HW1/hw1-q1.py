@@ -109,12 +109,13 @@ class MLP(object):
         Z1 = self.W1.dot(x_i[:, None]) + self.B1 # (200, 784) . (784,1) + (200,1) -> (200,1)
         H1 = Relu(Z1) # -> Input da layer 2 -> (200,1)
         Z2 = self.W2.dot(H1) + self.B2 # (10,200) . (200,1) + (10,1) -> (10,1)
-        labels_probabilities = np.exp(Z2) / np.sum(np.exp(Z2)) # (10,1)
+        Z2 = np.subtract(Z2, np.max(Z2))
+        y_hat_probabities = np.exp(Z2) / np.sum(np.exp(Z2)) # (10,1)
 
         y_one_hot = np.zeros((np.size(self.W2, 0), 1)) # (10, 1)
         y_one_hot[y_i] = 1
-        # COMPUTE PREDICTION and LOSS
-        y_hat_probabities = labels_probabilities.argmax(axis=0) # (10, 1)
+        # COMPUTE LOSS
+        loss = -y_one_hot.T.dot(np.log(y_hat_probabities))
 
         # Backward propagation
         gradZ2 = y_hat_probabities - y_one_hot # (10, 1) - (10, 1) -> (10, 1)
@@ -133,12 +134,13 @@ class MLP(object):
         # Compute the forward pass of the network. At prediction time, there is
         # no need to save the values of hidden nodes, whereas this is required
         # at training time.        
-        Z1 = np.dot(self.W1, X.T)  # [200,784] . [784,50k] -> [200,50k]
+        Z1 = np.dot(self.W1, X.T) + self.B1.dot(np.full((1,X.shape[0]),1.))  # [200,784] . [784,50k] + (200,50k) -> [200,50k]
         H1 = Relu(Z1) # -> Input da layer 2 (x_next) -> [200, 50k]
 
-        Z2 = np.dot(self.W2, H1) # [10, 200] . [200, 50k] -> [10, 50k]
-        H2 = np.exp(Z2) / np.sum(np.exp(Z2))
-        return H2.argmax(axis=0)
+        Z2 = np.dot(self.W2, H1) + self.B2.dot(np.full((1,X.shape[0]),1.)) # [10, 200] . [200, 50k] + (10,50k) -> [10, 50k]
+        Z2 = np.subtract(Z2, np.max(Z2))
+        H2 = np.exp(Z2) / np.sum(np.exp(Z2)) # (10, 50k) 
+        return H2.argmax(axis=0) # (50k,)
 
     def evaluate(self, X, y):
         """
@@ -149,11 +151,14 @@ class MLP(object):
         y_hat = self.predict(X)
         n_correct = (y == y_hat).sum()
         n_possible = y.shape[0]
+        print("Accuracy: " + str(n_correct / n_possible))
         return n_correct / n_possible
 
     def train_epoch(self, X, y, learning_rate=0.001):
         for x_i, y_i in zip(X, y):
             self.update_weight(x_i, y_i, learning_rate)
+        
+        
 
 
 
@@ -168,6 +173,7 @@ def plot(epochs, valid_accs, test_accs,train_accs):
     plt.show()
 
 
+loss = []
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('model',
@@ -214,6 +220,9 @@ def main():
         train_order = np.random.permutation(train_X.shape[0])
         train_X = train_X[train_order]
         train_y = train_y[train_order]
+        #FIXME
+        train_X = train_X[:train_X.shape[0]//10]
+        train_y = train_y[:train_y.shape[0]//10]
         model.train_epoch(
             train_X,
             train_y,
@@ -224,7 +233,7 @@ def main():
         test_accs.append(model.evaluate(test_X, test_y))
 
     # plot
-    plot(epochs, valid_accs, test_accs,train_accs)
+    plot(epochs, valid_accs, test_accs, train_accs)
 
 
 if __name__ == '__main__':
