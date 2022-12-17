@@ -11,6 +11,13 @@ import matplotlib.pyplot as plt
 import math
 import utils
 
+DEBUG = True
+# DEBUG = False
+
+def dPrint(*args,**kwargs):
+    if DEBUG:
+        print(*args,**kwargs)
+
 
 def configure_seed(seed):
     os.environ["PYTHONHASHSEED"] = str(seed)
@@ -44,7 +51,7 @@ class LinearModel(object):
         y_hat = self.predict(X)
         n_correct = (y == y_hat).sum()
         n_possible = y.shape[0]
-        print("Results:" ,n_correct/n_possible)
+        dPrint("Results:" ,n_correct/n_possible)
         return n_correct / n_possible
 
 
@@ -62,9 +69,9 @@ class Perceptron(LinearModel):
         # if prediction is wrong update weights
         if y_hat != y_i:
             # increase weights for correct class
-            self.W[y_i] = self.learning_rate * np.add(self.W[y_i],x_i)
+            self.W[y_i] = np.add(self.W[y_i],x_i)
             # decrease weights for wrong class
-            self.W[y_hat] = self.learning_rate * np.subtract(self.W[y_hat],x_i)
+            self.W[y_hat] = np.subtract(self.W[y_hat],x_i)
 
 
 class LogisticRegression(LinearModel):
@@ -109,7 +116,9 @@ class MLP(object):
         Z1 = self.W1.dot(x_i[:, None]) + self.B1 # (200, 784) . (784,1) + (200,1) -> (200,1)
         H1 = Relu(Z1) # -> Input da layer 2 -> (200,1)
         Z2 = self.W2.dot(H1) + self.B2 # (10,200) . (200,1) + (10,1) -> (10,1)
-        Z2 = np.subtract(Z2, np.max(Z2))
+
+        Z2 = Z2 - np.max(Z2) # done for numerical stability, if weights go above ~700, exponential explodes :c
+
         y_hat_probabities = np.exp(Z2) / np.sum(np.exp(Z2)) # (10,1)
 
         y_one_hot = np.zeros((np.size(self.W2, 0), 1)) # (10, 1)
@@ -138,9 +147,12 @@ class MLP(object):
         H1 = Relu(Z1) # -> Input da layer 2 (x_next) -> [200, 50k]
 
         Z2 = np.dot(self.W2, H1) + self.B2.dot(np.full((1,X.shape[0]),1.)) # [10, 200] . [200, 50k] + (10,50k) -> [10, 50k]
-        Z2 = np.subtract(Z2, np.max(Z2))
+        print(Z2.shape)
+
+        Z2 = Z2 - np.max(Z2)    # done for numerical stability, if weights go above ~700, exponential explodes :c
+
         H2 = np.exp(Z2) / np.sum(np.exp(Z2)) # (10, 50k) 
-        return H2.argmax(axis=0) # (50k,)
+        return H2.argmax(axis=0) # (1,50k)
 
     def evaluate(self, X, y):
         """
@@ -171,6 +183,7 @@ def plot(epochs, valid_accs, test_accs,train_accs):
     plt.plot(epochs, train_accs, label='train')
     plt.legend()
     plt.show()
+    plt.savefig("Plot of MLP")
 
 
 loss = []
@@ -198,6 +211,7 @@ def main():
     add_bias = opt.model != "mlp"
     data = utils.load_classification_data(bias=add_bias)
     train_X, train_y = data["train"]
+
     dev_X, dev_y = data["dev"]
     test_X, test_y = data["test"]
 
@@ -216,13 +230,10 @@ def main():
     valid_accs = []
     test_accs = []
     for i in epochs:
-        print('Training epoch {}'.format(i))
+        print('\nTraining epoch {}'.format(i))
         train_order = np.random.permutation(train_X.shape[0])
         train_X = train_X[train_order]
         train_y = train_y[train_order]
-        #FIXME
-        train_X = train_X[:train_X.shape[0]//10]
-        train_y = train_y[:train_y.shape[0]//10]
         model.train_epoch(
             train_X,
             train_y,
@@ -231,9 +242,28 @@ def main():
         train_accs.append(model.evaluate(train_X, train_y))
         valid_accs.append(model.evaluate(dev_X, dev_y))
         test_accs.append(model.evaluate(test_X, test_y))
+        print("\ntrain: ",train_accs[-1])
+        print("validation: ",valid_accs[-1])
+        print("test: ",test_accs[-1])
 
     # plot
     plot(epochs, valid_accs, test_accs, train_accs)
+
+    print("\n\nResults for a similar MLP implemented in scikit-learn for comparison")
+    from sklearn.neural_network import MLPClassifier
+    clf = MLPClassifier(hidden_layer_sizes=(200),
+        activation='relu',
+        solver='sgd',
+        learning_rate='constant',
+        learning_rate_init=0.001,
+        nesterovs_momentum=False,
+        random_state=1,
+        max_iter=1000)
+    clf.fit(train_X, train_y)
+    print("\ntrain: ",clf.score(train_X, train_y))
+    print("validation: ",clf.score(dev_X, dev_y))
+    print("test: ",clf.score(test_X, test_y))
+
 
 
 if __name__ == '__main__':
