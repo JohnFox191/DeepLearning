@@ -21,6 +21,7 @@ def configure_seed(seed):
 class LinearModel(object):
     def __init__(self, n_classes, n_features, **kwargs):
         self.W = np.zeros((n_classes, n_features))
+        self.learning_rate = kwargs['learning_rate']
 
     def update_weight(self, x_i, y_i, **kwargs):
         raise NotImplementedError
@@ -60,15 +61,14 @@ class Perceptron(LinearModel):
         
         # if prediction is wrong update weights
         if y_hat != y_i:
-            
             # increase weights for correct class
-            self.W[y_i] = np.add(self.W[y_i],x_i)
+            self.W[y_i] = self.learning_rate * np.add(self.W[y_i],x_i)
             # decrease weights for wrong class
-            self.W[y_hat] = np.subtract(self.W[y_hat],x_i)
+            self.W[y_hat] = self.learning_rate * np.subtract(self.W[y_hat],x_i)
 
 
 class LogisticRegression(LinearModel):
-    def update_weight(self, x_i, y_i, learning_rate=0.001):
+    def update_weight(self, x_i, y_i, **kwargs):
         """
         x_i (n_features): a single training example
         y_i: the gold label for that example
@@ -79,22 +79,66 @@ class LogisticRegression(LinearModel):
         y_one_hot = np.zeros((np.size(self.W, 0), 1))
         y_one_hot[y_i] = 1
         label_probability = np.exp(label_scores) / np.sum(np.exp(label_scores))
-        self.W += learning_rate * (y_one_hot - label_probability) * x_i[None, :]
+        self.W += self.learning_rate * (y_one_hot - label_probability) * x_i[None, :]
+
+def Relu(x):
+    return x * (x > 0)
+
+def DRelu(x):
+    return 1. * (x >= 0)
 
 
+    
 class MLP(object):
     # Q3.2b. This MLP skeleton code allows the MLP to be used in place of the
     # linear models with no changes to the training loop or evaluation code
     # in main().
-    def __init__(self, n_classes, n_features, hidden_size):
+    def __init__(self, n_classes, n_features, hidden_size, n_layers):
         # Initialize an MLP with a single hidden layer.
-        raise NotImplementedError
+        self.hidden_size = hidden_size
+        self.n_classes = n_classes
+        self.n_features = n_features
+        self.W1 = np.random.normal(loc=0.1, scale=np.sqrt(0.1), size=(hidden_size , n_features)) # [200, 784]
+        self.W2 = np.random.normal(loc=0.1, scale=np.sqrt(0.1), size=(n_classes , hidden_size)) # [10, 200]
+        self.B1 = np.zeros((hidden_size, 1)) # (200, 1)
+        self.B2 = np.zeros((n_classes, 1)) # (10, 1)
+
+    def update_weight(self, x_i, y_i, learning_rate=0.001):
+
+        # Forward propagation
+        Z1 = self.W1.dot(x_i[:, None]) + self.B1 # (200, 784) . (784,1) + (200,1) -> (200,1)
+        H1 = Relu(Z1) # -> Input da layer 2 -> (200,1)
+        Z2 = self.W2.dot(H1) + self.B2 # (10,200) . (200,1) + (10,1) -> (10,1)
+        labels_probabilities = np.exp(Z2) / np.sum(np.exp(Z2)) # (10,1)
+
+        y_one_hot = np.zeros((np.size(self.W2, 0), 1)) # (10, 1)
+        y_one_hot[y_i] = 1
+        # COMPUTE PREDICTION and LOSS
+        y_hat_probabities = labels_probabilities.argmax(axis=0) # (10, 1)
+
+        # Backward propagation
+        gradZ2 = y_hat_probabities - y_one_hot # (10, 1) - (10, 1) -> (10, 1)
+        gradW2 = gradZ2.dot(H1.T) # (10, 1) * (1, 200) -> (10, 200)
+
+        gradH1 = self.W2.T.dot(gradZ2) # (200, 10) * (10, 1) -> (200, 1)
+        gradZ1 = np.multiply(gradH1, DRelu(Z1)) # (200, 1) * (200, 1)
+        gradW1 = gradZ1.dot(x_i[None, :]) # (200, 1) * (1, 784) -> (200, 784)
+
+        self.W2 -= learning_rate * gradW2 # (10, 200)
+        self.W1 -= learning_rate * gradW1 # (200, 784)
+        self.B1 -= learning_rate * gradZ1 # (200,1)
+        self.B2 -= learning_rate * gradZ2 # (10,1)
 
     def predict(self, X):
         # Compute the forward pass of the network. At prediction time, there is
         # no need to save the values of hidden nodes, whereas this is required
-        # at training time.
-        raise NotImplementedError
+        # at training time.        
+        Z1 = np.dot(self.W1, X.T)  # [200,784] . [784,50k] -> [200,50k]
+        H1 = Relu(Z1) # -> Input da layer 2 (x_next) -> [200, 50k]
+
+        Z2 = np.dot(self.W2, H1) # [10, 200] . [200, 50k] -> [10, 50k]
+        H2 = np.exp(Z2) / np.sum(np.exp(Z2))
+        return H2.argmax(axis=0)
 
     def evaluate(self, X, y):
         """
@@ -108,7 +152,9 @@ class MLP(object):
         return n_correct / n_possible
 
     def train_epoch(self, X, y, learning_rate=0.001):
-        raise NotImplementedError
+        for x_i, y_i in zip(X, y):
+            self.update_weight(x_i, y_i, learning_rate)
+
 
 
 def plot(epochs, valid_accs, test_accs,train_accs):
@@ -154,7 +200,7 @@ def main():
 
     # initialize the model
     if opt.model == 'perceptron':
-        model = Perceptron(n_classes, n_feats)
+        model = Perceptron(n_classes, n_feats, learning_rate=0.001)
     elif opt.model == 'logistic_regression':
         model = LogisticRegression(n_classes, n_feats)
     else:
