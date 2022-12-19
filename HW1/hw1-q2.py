@@ -8,9 +8,12 @@ import torch
 from torch.utils.data import DataLoader
 import torch.nn as nn
 from matplotlib import pyplot as plt
+import numpy as np
 
 import utils
 
+device = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using {device} device")
 
 # Q2.1
 class LogisticRegression(nn.Module):
@@ -26,9 +29,9 @@ class LogisticRegression(nn.Module):
         pytorch to make weights and biases, have a look at
         https://pytorch.org/docs/stable/nn.html
         """
-        super().__init__()
-        # In a pytorch module, the declarations of layers needs to come after
-        # the super __init__ line, otherwise the magic doesn't work.
+        super(LogisticRegression, self).__init__()
+        self.layer = nn.Linear(n_features, n_classes, bias=True)
+        self.activation = nn.Softmax(dim=1) 
 
     def forward(self, x, **kwargs):
         """
@@ -44,7 +47,7 @@ class LogisticRegression(nn.Module):
         forward pass -- this is enough for it to figure out how to do the
         backward pass.
         """
-        raise NotImplementedError
+        return self.activation(self.layer(x))
 
 
 # Q2.2
@@ -64,8 +67,31 @@ class FeedforwardNetwork(nn.Module):
         attributes that each FeedforwardNetwork instance has. Note that nn
         includes modules for several activation functions and dropout as well.
         """
-        super().__init__()
-        # Implement me!
+        super(FeedforwardNetwork, self).__init__()
+
+        if activation_type == "tanh":
+            self.activation = nn.Tanh()
+        else:
+            print("defaulted activation to relu")
+            self.activation = nn.ReLU()
+
+        self.flatten = nn.Flatten()
+        # input layer to first hidden layer
+        self.layers = nn.Sequential(
+            nn.Linear(n_features, hidden_size, bias=True),
+            nn.Dropout(dropout),
+            self.activation
+        )
+        # stack of hidden layers beyond the first one
+        for i in range(layers-1):
+            self.layers.add_module(f"hidden_layer{i}_linear",nn.Linear(hidden_size, hidden_size, bias=True))
+            self.layers.add_module(f"hidden_layer{i}_dropout",nn.Dropout(dropout))
+            self.layers.add_module(f"hidden_layer{i}_activation",self.activation)
+        
+        # final hidden layer to output layer
+        self.layers.add_module(f"hidden_layer{layers}_linear",nn.Linear(hidden_size, n_classes, bias=True))
+        self.layers.add_module(f"hidden_layer{layers}_dropout",nn.Dropout(dropout))
+        self.layers.add_module(f"hidden_layer{layers}_activation",self.activation)
 
     def forward(self, x, **kwargs):
         """
@@ -75,7 +101,9 @@ class FeedforwardNetwork(nn.Module):
         the output logits from x. This will include using various hidden
         layers, pointwise nonlinear functions, and dropout.
         """
-        raise NotImplementedError
+        
+        x = self.flatten(x)
+        return self.layers(x)
 
 
 def train_batch(X, y, model, optimizer, criterion, **kwargs):
@@ -96,8 +124,12 @@ def train_batch(X, y, model, optimizer, criterion, **kwargs):
     This function should return the loss (tip: call loss.item()) to get the
     loss as a numerical value that is not part of the computation graph.
     """
-    raise NotImplementedError
-
+    optimizer.zero_grad()
+    y_hat = model(X)
+    loss = criterion(y_hat, y)
+    loss.backward()
+    optimizer.step()
+    return loss
 
 def predict(model, X):
     """X (n_examples x n_features)"""
@@ -164,16 +196,18 @@ def main():
     # initialize the model
     if opt.model == 'logistic_regression':
         model = LogisticRegression(n_classes, n_feats)
+        model = model.to(device)
     else:
         model = FeedforwardNetwork(
             n_classes,
             n_feats,
-            opt.hidden_size,
+            opt.hidden_sizes,
             opt.layers,
             opt.activation,
             opt.dropout
         )
-
+        model = model.to(device)
+    
     # get an optimizer
     optims = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}
 
@@ -195,17 +229,17 @@ def main():
         print('Training epoch {}'.format(ii))
         for X_batch, y_batch in train_dataloader:
             loss = train_batch(
-                X_batch, y_batch, model, optimizer, criterion)
+                X_batch.to(device), y_batch.to(device), model, optimizer, criterion)
             train_losses.append(loss)
 
         mean_loss = torch.tensor(train_losses).mean().item()
         print('Training loss: %.4f' % (mean_loss))
 
         train_mean_losses.append(mean_loss)
-        valid_accs.append(evaluate(model, dev_X, dev_y))
+        valid_accs.append(evaluate(model, dev_X.to(device), dev_y.to(device)))
         print('Valid acc: %.4f' % (valid_accs[-1]))
 
-    print('Final Test acc: %.4f' % (evaluate(model, test_X, test_y)))
+    print('Final Test acc: %.4f' % (evaluate(model, test_X.to(device), test_y.to(device))))
     # plot
     if opt.model == "logistic_regression":
         config = "{}-{}".format(opt.learning_rate, opt.optimizer)
