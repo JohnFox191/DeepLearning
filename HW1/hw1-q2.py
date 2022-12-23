@@ -11,8 +11,10 @@ from matplotlib import pyplot as plt
 import numpy as np
 
 import utils
+import time
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+device = "cpu"
 print(f"Using {device} device")
 
 # Q2.1
@@ -30,8 +32,8 @@ class LogisticRegression(nn.Module):
         https://pytorch.org/docs/stable/nn.html
         """
         super(LogisticRegression, self).__init__()
+        
         self.layer = nn.Linear(n_features, n_classes, bias=True)
-        self.activation = nn.Softmax(dim=1) 
 
     def forward(self, x, **kwargs):
         """
@@ -47,18 +49,21 @@ class LogisticRegression(nn.Module):
         forward pass -- this is enough for it to figure out how to do the
         backward pass.
         """
-        return self.activation(self.layer(x))
+        return self.layer(x)
 
 
 # Q2.2
 class FeedforwardNetwork(nn.Module):
     def __init__(
-            self, n_classes, n_features, hidden_size, layers,
+            self, n_classes, n_features, hidden_sizes, layers,
             activation_type, dropout, **kwargs):
+
+        print("Args:",hidden_sizes," ",layers," ",activation_type," ",dropout)
+
         """
         n_classes (int)
         n_features (int)
-        hidden_size (int)
+        hidden_sizes (int)
         layers (int)
         activation_type (str)
         dropout (float): dropout probability
@@ -75,23 +80,21 @@ class FeedforwardNetwork(nn.Module):
             print("defaulted activation to relu")
             self.activation = nn.ReLU()
 
-        self.flatten = nn.Flatten()
         # input layer to first hidden layer
         self.layers = nn.Sequential(
-            nn.Linear(n_features, hidden_size, bias=True),
+            nn.Flatten(),
+            nn.Linear(n_features, hidden_sizes, bias=True),
             nn.Dropout(dropout),
             self.activation
         )
         # stack of hidden layers beyond the first one
         for i in range(layers-1):
-            self.layers.add_module(f"hidden_layer{i}_linear",nn.Linear(hidden_size, hidden_size, bias=True))
+            self.layers.add_module(f"hidden_layer{i}_linear",nn.Linear(hidden_sizes, hidden_sizes, bias=True))
             self.layers.add_module(f"hidden_layer{i}_dropout",nn.Dropout(dropout))
             self.layers.add_module(f"hidden_layer{i}_activation",self.activation)
         
         # final hidden layer to output layer
-        self.layers.add_module(f"hidden_layer{layers}_linear",nn.Linear(hidden_size, n_classes, bias=True))
-        self.layers.add_module(f"hidden_layer{layers}_dropout",nn.Dropout(dropout))
-        self.layers.add_module(f"hidden_layer{layers}_activation",self.activation)
+        self.layers.add_module(f"hidden_layer{layers}_linear",nn.Linear(hidden_sizes, n_classes, bias=True))
 
     def forward(self, x, **kwargs):
         """
@@ -101,8 +104,7 @@ class FeedforwardNetwork(nn.Module):
         the output logits from x. This will include using various hidden
         layers, pointwise nonlinear functions, and dropout.
         """
-        
-        x = self.flatten(x)
+
         return self.layers(x)
 
 
@@ -185,7 +187,7 @@ def main():
     data = utils.load_classification_data()
     dataset = utils.ClassificationDataset(data)
     train_dataloader = DataLoader(
-        dataset, batch_size=opt.batch_size, shuffle=True)
+        dataset, batch_size=opt.batch_size, shuffle=True,pin_memory=True)
 
     dev_X, dev_y = dataset.dev_X, dataset.dev_y
     test_X, test_y = dataset.test_X, dataset.test_y
@@ -220,6 +222,7 @@ def main():
     # get a loss criterion
     criterion = nn.CrossEntropyLoss()
 
+    ti_tot = time.monotonic()
     # training loop
     epochs = torch.arange(1, opt.epochs + 1)
     train_mean_losses = []
@@ -227,27 +230,36 @@ def main():
     train_losses = []
     for ii in epochs:
         print('Training epoch {}'.format(ii))
+        ti = time.monotonic()
         for X_batch, y_batch in train_dataloader:
             loss = train_batch(
-                X_batch.to(device), y_batch.to(device), model, optimizer, criterion)
+                X_batch.to(device, non_blocking=True), y_batch.to(device, non_blocking=True), model, optimizer, criterion)
             train_losses.append(loss)
 
         mean_loss = torch.tensor(train_losses).mean().item()
         print('Training loss: %.4f' % (mean_loss))
 
         train_mean_losses.append(mean_loss)
-        valid_accs.append(evaluate(model, dev_X.to(device), dev_y.to(device)))
+        valid_accs.append(evaluate(model, dev_X.to(device, non_blocking=True), dev_y.to(device, non_blocking=True)))
         print('Valid acc: %.4f' % (valid_accs[-1]))
+        tf = time.monotonic()
+        delta = tf-ti
+        print("epoch took: ", delta)
 
-    print('Final Test acc: %.4f' % (evaluate(model, test_X.to(device), test_y.to(device))))
+    tf_tot = time.monotonic()
+    delta_tot = tf_tot-ti_tot
+    print("total training took: ", delta_tot)
+
+    final_acc = evaluate(model, test_X.to(device, non_blocking=True), test_y.to(device, non_blocking=True))
+    print('Final Test acc: %.4f' % (final_acc))
     # plot
     if opt.model == "logistic_regression":
         config = "{}-{}".format(opt.learning_rate, opt.optimizer)
     else:
-        config = "{}-{}-{}-{}-{}-{}-{}".format(opt.learning_rate, opt.hidden_size, opt.layers, opt.dropout, opt.activation, opt.optimizer, opt.batch_size)
+        config = "{}-{}-{}-{}-{}-{}-{}".format(opt.learning_rate, opt.hidden_sizes, opt.layers, opt.dropout, opt.activation, opt.optimizer, opt.batch_size)
 
-    plot(epochs, train_mean_losses, ylabel='Loss', name='{}-training-loss-{}'.format(opt.model, config))
-    plot(epochs, valid_accs, ylabel='Accuracy', name='{}-validation-accuracy-{}'.format(opt.model, config))
+    plot(epochs, train_mean_losses, ylabel='Loss', name='{}-training-loss-{}'.format(opt.model, config)+ '_Final_Test_acc-%.8f' % (final_acc) + '_Final_val_acc-%.8f' % (valid_accs[-1]))
+    plot(epochs, valid_accs, ylabel='Accuracy', name='{}-validation-accuracy-{}'.format(opt.model, config) + '_Final_Test_acc-%.8f' % (final_acc)+ '_Final_val_acc-%.8f' % (valid_accs[-1]))
 
 
 if __name__ == '__main__':

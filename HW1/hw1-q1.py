@@ -174,7 +174,7 @@ class MLP(object):
 
 
 
-def plot(epochs, valid_accs, test_accs,train_accs):
+def plot(epochs, valid_accs, test_accs,train_accs,name):
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.xticks(epochs)
@@ -182,8 +182,7 @@ def plot(epochs, valid_accs, test_accs,train_accs):
     plt.plot(epochs, test_accs, label='test')
     plt.plot(epochs, train_accs, label='train')
     plt.legend()
-    plt.show()
-    plt.savefig("Plot of MLP")
+    plt.savefig('%s.pdf' % (name))
 
 
 loss = []
@@ -220,9 +219,9 @@ def main():
 
     # initialize the model
     if opt.model == 'perceptron':
-        model = Perceptron(n_classes, n_feats, learning_rate=0.001)
+        model = Perceptron(n_classes, n_feats)
     elif opt.model == 'logistic_regression':
-        model = LogisticRegression(n_classes, n_feats)
+        model = LogisticRegression(n_classes, n_feats,learning_rate=0.001)
     else:
         model = MLP(n_classes, n_feats, opt.hidden_size, opt.layers)
     epochs = np.arange(1, opt.epochs + 1)
@@ -247,22 +246,7 @@ def main():
         print("test: ",test_accs[-1])
 
     # plot
-    plot(epochs, valid_accs, test_accs, train_accs)
-
-    print("\n\nResults for a similar MLP implemented in scikit-learn for comparison")
-    from sklearn.neural_network import MLPClassifier
-    clf = MLPClassifier(hidden_layer_sizes=(200),
-        activation='relu',
-        solver='sgd',
-        learning_rate='constant',
-        learning_rate_init=0.001,
-        nesterovs_momentum=False,
-        random_state=1,
-        max_iter=1000)
-    clf.fit(train_X, train_y)
-    print("\ntrain: ",clf.score(train_X, train_y))
-    print("validation: ",clf.score(dev_X, dev_y))
-    print("test: ",clf.score(test_X, test_y))
+    plot(epochs, valid_accs, test_accs, train_accs,name=f"{opt.model}"+"_test-acc-%.8f"%(test_accs[-1]) + "_final-val-acc-%.8f"%(valid_accs[-1]))
 
 
 
