@@ -7,7 +7,7 @@ DEBUG = False
 
 def dprint(*args):
     if DEBUG:
-        print(args)
+        print(*args)
 
 def reshape_state(state):
     h_state = state[0]
@@ -18,23 +18,16 @@ def reshape_state(state):
 
 
 class Attention(nn.Module):
-    def __init__(
-        self,
-        hidden_size,
-    ):
+    def __init__( self, hidden_size, ):
 
         super(Attention, self).__init__()
         "Luong et al. general attention (https://arxiv.org/pdf/1508.04025.pdf)"
         self.linear_in = nn.Linear(hidden_size, hidden_size, bias=False)
         self.linear_out = nn.Linear(hidden_size * 2, hidden_size)
 
-    def forward(
-        self,
-        query,
-        encoder_outputs,
-        src_lengths,
-    ):
-        # query: (batch_size, 1, hidden_dim)
+    def forward( self, query, encoder_outputs, src_lengths, ):
+        dprint("\n#\n#\n#\n########## ATTENTION ######################\n#\n#\n#")
+        # query: (batch_size, max_tgt_len, hidden_dim)
         # encoder_outputs: (batch_size, max_src_len, hidden_dim)
         # src_lengths: (batch_size)
         # we will need to use this mask to assign float("-inf") in the attention scores
@@ -43,6 +36,33 @@ class Attention(nn.Module):
         # src_seq_mask: (batch_size, max_src_len)
         # the "~" is the elementwise NOT operator
         src_seq_mask = ~self.sequence_mask(src_lengths)
+        
+
+        dprint("\n\n src_seq_mask.shape",src_seq_mask.shape)
+        
+        dprint("\n query.shape",query.shape)
+        dprint("\n encode_outputs.shape",encoder_outputs.shape)
+        
+        query_weighted = self.linear_in(query)
+        dprint("\n query_weighted.shape",query_weighted.shape)
+        score = torch.bmm(query_weighted,encoder_outputs.permute(0,2,1))
+        dprint("\n score.shape",score.shape)
+        
+        mask = src_seq_mask.unsqueeze(1).repeat(1,score.shape[1],1)
+        dprint("\n mask.shape",mask.shape)
+        
+        score = score.masked_fill(mask,float("-inf"))
+        
+        p = torch.softmax(score,dim=2)
+        dprint("\n p.shape",p.shape)
+        c = p @ encoder_outputs
+        dprint("\n c.shape",c.shape)
+        
+        concat = torch.cat((query,c),dim=2)
+        dprint("\n concat.shape",concat.shape)
+        weighted_concat = self.linear_out(concat)
+        attn_out = torch.tanh(weighted_concat)
+        return attn_out
         #############################################
         # TODO: Implement the forward pass of the attention layer
         # Hints:
@@ -56,7 +76,7 @@ class Attention(nn.Module):
         #############################################
         # END OF YOUR CODE
         #############################################
-        # attn_out: (batch_size, 1, hidden_size)
+        # attn_out: (batch_size, max_tgt_len, hidden_size)
         # TODO: Uncomment the following line when you implement the forward pass
         # return attn_out
 
@@ -169,12 +189,15 @@ class Decoder(nn.Module):
             dec_state = reshape_state(dec_state)
             
         dprint("\n#\n#\n#\n########## DECODER ######################\n#\n#\n#")
+        dprint("\n\n tgt.shape:",tgt.shape)
         dprint("\n\n tgt:",tgt.shape,"->",tgt)
         dprint("\n\n dec_state.shape:",(dec_state[0].shape,dec_state[1].shape))
-        dprint("\n\n encoder_outputs:",encoder_outputs.shape,"->",encoder_outputs)
+        dprint("\n\n encoder_outputs.shape:",encoder_outputs.shape)
+        # dprint("\n\n encoder_outputs:",encoder_outputs.shape,"->",encoder_outputs)
         dprint("\n\n src_lengths:",src_lengths.shape,"->",src_lengths)
 
         if tgt.size(1) > 1:
+            tgt[tgt == 2] = 0
             tgt_cut = tgt[:,:-1]
         else:
             tgt_cut = tgt
@@ -187,8 +210,12 @@ class Decoder(nn.Module):
 
         drop_emb_tgt = self.dropout(emb_tgt)
         
+        dprint("\ndrop_emb_tgt.shape",drop_emb_tgt.shape)
         outputs, dec_state = self.lstm(drop_emb_tgt,dec_state)
+        dprint("\n outputs.shape",outputs.shape)
         
+        if self.attn is not None:
+            outputs = self.attn( outputs, encoder_outputs, src_lengths, )
         outputs = self.dropout(outputs)
 
         return outputs, dec_state
