@@ -197,7 +197,8 @@ class Decoder(nn.Module):
         dprint("\n\n src_lengths:",src_lengths.shape,"->",src_lengths)
 
         if tgt.size(1) > 1:
-            tgt[tgt == 2] = 0
+            # tgt[tgt == 2] = 0
+            # TODO: Remove EOS from ALLLLLL sentences
             tgt_cut = tgt[:,:-1]
         else:
             tgt_cut = tgt
