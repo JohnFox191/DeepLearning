@@ -94,19 +94,26 @@ class Encoder(nn.Module):
 
         drop_embedded = self.dropout(embedded)
         
+        pack = True
+
+        if pack:
         # pack embeddings 
-        pack_embed = torch.nn.utils.rnn.pack_padded_sequence(drop_embedded,lengths,batch_first=True,enforce_sorted=False)
-        #dprint("\n pack_embed: ",pack_embed)
-        
+            pack_embed = torch.nn.utils.rnn.pack_padded_sequence(drop_embedded,lengths.cpu(),batch_first=True,enforce_sorted=False)
+        else:
+            pack_embed = drop_embedded
+        dprint("\n pack_embed: ",pack_embed)
         outputs,final_hidden = self.lstm(pack_embed)
         dprint("\n outputs :", outputs)
         
         dprint("\n state[0] shape:", final_hidden[0].shape)
         dprint("\n state[1] shape:", final_hidden[1].shape)
         
-        unpacked_outs,unpacked_lengths = torch.nn.utils.rnn.pad_packed_sequence(outputs,batch_first=True)
+        if pack:
+            unpacked_outs,_ = torch.nn.utils.rnn.pad_packed_sequence(outputs,batch_first=True)
+        else:
+            unpacked_outs = outputs
         dprint("\n unpacked_outs: ", unpacked_outs.shape,"\n",unpacked_outs)
-        dprint("\n unpacked_lengths: ", unpacked_lengths.shape,"\n",unpacked_lengths)
+        # dprint("\n unpacked_lengths: ", unpacked_lengths.shape,"\n",unpacked_lengths)
         
         # uncomment to disable output dropout
         # enc_output = unpacked_outs
@@ -182,6 +189,8 @@ class Decoder(nn.Module):
         
         outputs, dec_state = self.lstm(drop_emb_tgt,dec_state)
         
+        outputs = self.dropout(outputs)
+
         return outputs, dec_state
         
         
