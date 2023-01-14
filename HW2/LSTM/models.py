@@ -4,8 +4,8 @@ from torch.nn.utils.rnn import pack_padded_sequence as pack
 from torch.nn.utils.rnn import pad_packed_sequence as unpack
 
 from data import PAD_IDX, SOS_IDX, EOS_IDX
-DEBUG = False
 
+DEBUG = False
 def dprint(*args):
     if DEBUG:
         print(*args)
@@ -38,9 +38,8 @@ class Attention(nn.Module):
         # the "~" is the elementwise NOT operator
         src_seq_mask = ~self.sequence_mask(src_lengths)
         
-
+        # debug prints
         dprint("\n\n src_seq_mask.shape",src_seq_mask.shape)
-        
         dprint("\n query.shape",query.shape)
         dprint("\n encode_outputs.shape",encoder_outputs.shape)
         
@@ -61,6 +60,8 @@ class Attention(nn.Module):
         # compute score vector        
         p = torch.softmax(score,dim=2)
         dprint("\n p.shape",p.shape)
+
+        # compute context vector
         c = p @ encoder_outputs
         dprint("\n c.shape",c.shape)
         
@@ -70,22 +71,11 @@ class Attention(nn.Module):
         weighted_concat = self.linear_out(concat) # WoT [q;c]
         attn_out = torch.tanh(weighted_concat) # tanh(WoT[q;c])
         return attn_out
-        #############################################
-        # TODO: Implement the forward pass of the attention layer
-        # Hints:
-        # - Use torch.bmm to do the batch matrix multiplication
-        #    (it does matrix multiplication for each sample in the batch)
-        # - Use torch.softmax to do the softmax
-        # - Use torch.tanh to do the tanh
-        # - Use torch.masked_fill to do the masking of the padding tokens
-        #############################################
-        raise NotImplementedError
+
         #############################################
         # END OF YOUR CODE
         #############################################
         # attn_out: (batch_size, max_tgt_len, hidden_size)
-        # TODO: Uncomment the following line when you implement the forward pass
-        # return attn_out
 
     def sequence_mask(self, lengths):
         """
@@ -134,7 +124,6 @@ class Encoder(nn.Module):
         # run embeddings through lstm
         outputs,final_hidden = self.lstm(pack_embed)
         dprint("\n outputs :", outputs)
-        
         dprint("\n state[0] shape:", final_hidden[0].shape)
         dprint("\n state[1] shape:", final_hidden[1].shape)
         
@@ -144,11 +133,9 @@ class Encoder(nn.Module):
         else:
             unpacked_outs = outputs
         dprint("\n unpacked_outs: ", unpacked_outs.shape,"\n",unpacked_outs)
-        # dprint("\n unpacked_lengths: ", unpacked_lengths.shape,"\n",unpacked_lengths)
         
         # dropout encoded outputs
         enc_output = self.dropout(unpacked_outs)
-        dprint("\n final_hidden hash",hash(final_hidden))
         return enc_output, final_hidden
 
         #############################################
@@ -187,23 +174,25 @@ class Decoder(nn.Module):
         if dec_state[0].shape[0] == 2:
             dprint("\n\nreshaped decoder")
             dec_state = reshape_state(dec_state)
-            
+
+
+        # debug prints    
         dprint("\n#\n#\n#\n########## DECODER ######################\n#\n#\n#")
         dprint("\n\n tgt.shape:",tgt.shape)
         dprint("\n\n tgt:",tgt.shape,"->",tgt)
         dprint("\n\n dec_state.shape:",(dec_state[0].shape,dec_state[1].shape))
         dprint("\n\n encoder_outputs.shape:",encoder_outputs.shape)
-        # dprint("\n\n encoder_outputs:",encoder_outputs.shape,"->",encoder_outputs)
+        dprint("\n\n encoder_outputs:",encoder_outputs.shape,"->",encoder_outputs)
         dprint("\n\n src_lengths:",src_lengths.shape,"->",src_lengths)
 
 
         # remove EOS from target sentence
         if tgt.size(1) > 1:
             tgt_cln = tgt.clone()
-            tgt_cln[tgt_cln == EOS_IDX] = PAD_IDX # remover EOS
+            tgt_cln[tgt_cln == EOS_IDX] = PAD_IDX # remove EOS
             tgt_cut = tgt_cln[:,:-1]    # cut last word, since it will always be padding 
         else:
-            tgt_cut = tgt
+            tgt_cut = tgt    # during prediction, dont cut anything
         dprint("\n\n tgt_cut:",tgt_cut.shape,"->",tgt_cut)
             
             
