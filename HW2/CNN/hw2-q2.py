@@ -159,7 +159,7 @@ def main():
     parser.add_argument('-learning_rate', type=float, default=0.01,
                         help="""Learning rate for parameter updates""")
     parser.add_argument('-l2_decay', type=float, default=0)
-    parser.add_argument('-dropout', type=float, default=0.8)
+    parser.add_argument('-dropout', type=float, default=0.3)
     parser.add_argument('-optimizer',
                         choices=['sgd', 'adam'], default='sgd')
     
@@ -201,6 +201,7 @@ def main():
             loss = train_batch(
                 X_batch, y_batch, model, optimizer, criterion)
             train_losses.append(loss)
+        
 
         tf = time.time() - ti 
         mean_loss = torch.tensor(train_losses).mean().item()
