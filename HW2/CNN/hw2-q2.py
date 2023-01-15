@@ -9,13 +9,14 @@ from torch.utils.data import DataLoader
 import torch.nn as nn
 from torch import optim
 import torch.nn.functional as F
-import torchvision
-from torchvision import transforms
 from matplotlib import pyplot as plt
 import numpy as np
 
 import utils
+import time
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"device: {device}")
 def computeSize(input_size, kernel_size, padding, stride):
     return (input_size[0], (input_size[1]-kernel_size[0]+2*padding)/stride+1, (input_size[2]-kernel_size[1]+2*padding)/stride+1)
 
@@ -62,7 +63,8 @@ class CNN(nn.Module):
         # !Only Decomment if using nn.NLLLoss() isntead of nn.CrossEntropyLoss()->uses logSoftmax internally! self.logsoftmax = nn.LogSoftmax(dim=-1)
 
     def forward(self, x):
-        z1 = self.conv1(x)
+        x_ = x.view(-1,1,28,28)
+        z1 = self.conv1(x_)
         h1 = self.relu1(z1)
         p1 = self.maxpool1(h1)
         
@@ -82,17 +84,17 @@ class CNN(nn.Module):
         return output
 
 def train_batch(X, y, model, optimizer, criterion, **kwargs):
-    X = torch.Tensor(X).view(-1, 1, 28, 28)
+    X = torch.Tensor(X)
     optimizer.zero_grad()
-    outputs = model(X)
-    loss = criterion(outputs, y)
+    outputs = model(X.to(device))
+    loss = criterion(outputs, y.to(device))
     loss.backward()
     optimizer.step()
     return loss.item()
 
 def predict(model, X):
     """X (n_examples x n_features)"""
-    scores = model(X)  # (n_examples x n_classes)
+    scores = model(X.to(device))  # (n_examples x n_classes)
     predicted_labels = scores.argmax(dim=-1)  # (n_examples)
     return predicted_labels
 
@@ -102,10 +104,10 @@ def evaluate(model, X, y):
     X (n_examples x n_features)
     y (n_examples): gold labels
     """
-    X = torch.Tensor(X).view(-1, 1, 28, 28) if X.shape[0] > 1 else torch.Tensor(X).view(1, 28, 28)
+    X = torch.Tensor(X)
     model.eval()
     y_hat = predict(model, X)
-    n_correct = (y == y_hat).sum().item()
+    n_correct = (y.to(device) == y_hat).sum().item()
     n_possible = float(y.shape[0])
     model.train()
     return n_correct / n_possible
@@ -131,7 +133,7 @@ def plot_feature_maps(model, train_dataset):
     
     data, _ = train_dataset[4]
     data.unsqueeze_(0)
-    output = model(data.view(1, 1, 28, 28))
+    output = model(data.to(device))
 
     plt.imshow(data.reshape(28,-1)) 
     plt.savefig('original_image.pdf')
@@ -173,7 +175,7 @@ def main():
     test_X, test_y = dataset.test_X, dataset.test_y
 
     # initialize the model
-    model = CNN(input_size=(1, 28, 28), n_classes=10, dropout_prob=opt.dropout)
+    model = CNN(input_size=(1, 28, 28), n_classes=10, dropout_prob=opt.dropout).to(device)
     
     # get an optimizer
     optims = {"adam": torch.optim.Adam, "sgd": torch.optim.SGD}
@@ -194,19 +196,22 @@ def main():
 
     for ii in epochs:
         print('Training epoch {}'.format(ii))
+        ti = time.time()
         for X_batch, y_batch in train_dataloader:
             loss = train_batch(
                 X_batch, y_batch, model, optimizer, criterion)
             train_losses.append(loss)
 
+        tf = time.time() - ti 
         mean_loss = torch.tensor(train_losses).mean().item()
         print('Training loss: %.4f' % (mean_loss))
+        print(f"Took {tf} seconds")
 
         train_mean_losses.append(mean_loss)
-        valid_accs.append(evaluate(model, dev_X, dev_y))
+        valid_accs.append(evaluate(model, dev_X.to(device), dev_y.to(device)))
         print('Valid acc: %.4f' % (valid_accs[-1]))
 
-    print('Final Test acc: %.4f' % (evaluate(model, test_X, test_y)))
+    print('Final Test acc: %.4f' % (evaluate(model, test_X.to(device), test_y.to(device))))
     # plot
     config = "{}-{}-{}-{}".format(opt.learning_rate, opt.dropout, opt.l2_decay, opt.optimizer)
 
