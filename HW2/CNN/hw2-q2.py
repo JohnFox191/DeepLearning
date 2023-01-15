@@ -25,9 +25,9 @@ class CNN(nn.Module):
         super(CNN, self).__init__()
         # First Convolutional Layer (5x5 Kernel)
         out_channels1 = 8
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=out_channels1, kernel_size=(5,5), stride=1, padding=(5-1)//2)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=out_channels1, kernel_size=(5,5), stride=1, padding='same')
         self.relu1 = nn.ReLU()
-        # Here input size is preserved, given padding=(kernel_size-1)//2
+        # Here input size is preserved, given padding=(kernel_size-1)
 
         # First Maxpool Layer (2x2 Kernel)
         self.maxpool1 = nn.MaxPool2d(kernel_size=(2,2), stride=2)
@@ -131,7 +131,7 @@ def plot_feature_maps(model, train_dataset):
     
     data, _ = train_dataset[4]
     data.unsqueeze_(0)
-    output = model(data.view(1, 28, 28))
+    output = model(data.view(1, 1, 28, 28))
 
     plt.imshow(data.reshape(28,-1)) 
     plt.savefig('original_image.pdf')
